@@ -1,8 +1,19 @@
 import streamlit as st
 import openai
-from newsletter_generator import NewsletterGenerator
-from utils import validate_inputs, format_output
 import json
+import sys
+import os
+
+# Aggiungi la directory corrente al path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+try:
+    from newsletter_generator import NewsletterGenerator
+    from utils import validate_inputs, format_output
+except ImportError as e:
+    st.error(f"Errore nell'importazione dei moduli: {e}")
+    st.info("Assicurati che tutti i file Python siano nella stessa directory del progetto")
+    st.stop()
 
 # Configurazione pagina
 st.set_page_config(
@@ -115,13 +126,13 @@ if api_key:
         st.subheader("📝 Personalizzazione Testo")
         forbidden_words = st.text_area(
             "Parole vietate",
-            height=68,
+            height=70,
             help="Parole da non utilizzare, separate da virgola"
         )
         
         required_words = st.text_area(
             "Parole da usare",
-            height=68,
+            height=70,
             help="Parole che devono essere incluse, separate da virgola"
         )
         
@@ -187,12 +198,16 @@ if api_key:
                     # Oggetti email
                     st.subheader("📧 Oggetti Email (max 40 caratteri)")
                     for i, subject in enumerate(result.get("email_subjects", []), 1):
-                        st.write(f"**{i}.** {subject} ({len(subject)} caratteri)")
+                        char_count = len(subject)
+                        color = "🟢" if char_count <= 40 else "🔴"
+                        st.write(f"**{i}.** {subject} {color} ({char_count} caratteri)")
                     
                     # Anteprime email
                     st.subheader("👀 Anteprime Email (max 100 caratteri)")
                     for i, preview in enumerate(result.get("email_previews", []), 1):
-                        st.write(f"**{i}.** {preview} ({len(preview)} caratteri)")
+                        char_count = len(preview)
+                        color = "🟢" if char_count <= 100 else "🔴"
+                        st.write(f"**{i}.** {preview} {color} ({char_count} caratteri)")
                     
                     # Contenuto newsletter
                     st.subheader("📝 Contenuto Newsletter")
@@ -208,10 +223,35 @@ if api_key:
                     )
                     
                 else:
-                    st.error("❌ Errore nella generazione della newsletter. Riprova.")
+                    st.error("❌ Errore nella generazione della newsletter.")
+                    st.info("💡 Possibili soluzioni:")
+                    st.write("- Verifica che la tua API Key sia corretta")
+                    st.write("- Controlla di avere crediti disponibili nel tuo account OpenAI")
+                    st.write("- Prova a semplificare il brief del contenuto")
+                    st.write("- Riprova tra qualche minuto")
                     
             except Exception as e:
-                st.error(f"❌ Errore: {str(e)}")
+                st.error(f"❌ Errore dettagliato: {str(e)}")
+                
+                # Suggerimenti specifici per errori comuni
+                error_str = str(e).lower()
+                if "api" in error_str or "key" in error_str:
+                    st.warning("🔑 Problema con l'API Key:")
+                    st.write("- Verifica che l'API Key sia corretta")
+                    st.write("- Assicurati di non aver raggiunto i limiti di utilizzo")
+                elif "model" in error_str:
+                    st.warning("🤖 Problema con il modello AI:")
+                    st.write("- Il modello GPT-4 potrebbe non essere disponibile")
+                    st.write("- Prova di nuovo, l'app userà automaticamente GPT-3.5 come backup")
+                elif "quota" in error_str or "limit" in error_str:
+                    st.warning("💳 Limite raggiunto:")
+                    st.write("- Hai raggiunto il limite di utilizzo del tuo account OpenAI")
+                    st.write("- Controlla il tuo piano su platform.openai.com")
+                else:
+                    st.info("🔄 Prova queste soluzioni:")
+                    st.write("- Ricarica la pagina e riprova")
+                    st.write("- Semplifica il contenuto richiesto")
+                    st.write("- Verifica la connessione internet")
 
 else:
     st.info("👈 Inserisci la tua OpenAI API Key nella barra laterale per iniziare")
