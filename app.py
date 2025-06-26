@@ -115,13 +115,13 @@ if api_key:
         st.subheader("📝 Personalizzazione Testo")
         forbidden_words = st.text_area(
             "Parole vietate",
-            height=60,
+            height=68,
             help="Parole da non utilizzare, separate da virgola"
         )
         
         required_words = st.text_area(
             "Parole da usare",
-            height=60,
+            height=68,
             help="Parole che devono essere incluse, separate da virgola"
         )
         
