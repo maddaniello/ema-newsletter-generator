@@ -1,11 +1,27 @@
-import openai
+try:
+    from openai import OpenAI
+    NEW_OPENAI = True
+except ImportError:
+    try:
+        import openai
+        NEW_OPENAI = False
+    except ImportError:
+        import subprocess
+        import sys
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "openai"])
+        import openai
+        NEW_OPENAI = False
+
 import json
 from typing import Dict, List, Optional
 
 class NewsletterGenerator:
     def __init__(self, api_key: str):
         self.api_key = api_key
-        openai.api_key = api_key
+        if NEW_OPENAI:
+            self.client = OpenAI(api_key=api_key)
+        else:
+            openai.api_key = api_key
     
     def generate_newsletter(self, data: Dict) -> Optional[Dict]:
         """Genera la newsletter completa usando OpenAI"""
@@ -14,29 +30,53 @@ class NewsletterGenerator:
             prompt = self._build_prompt(data)
             
             # Chiamata a OpenAI
-            response = openai.ChatCompletion.create(
-                model="gpt-4",
-                messages=[
-                    {
-                        "role": "system", 
-                        "content": self._get_system_prompt()
-                    },
-                    {
-                        "role": "user", 
-                        "content": prompt
-                    }
-                ],
-                max_tokens=4000,
-                temperature=0.7
-            )
+            if NEW_OPENAI:
+                response = self.client.chat.completions.create(
+                    model="gpt-4",
+                    messages=[
+                        {
+                            "role": "system", 
+                            "content": self._get_system_prompt()
+                        },
+                        {
+                            "role": "user", 
+                            "content": prompt
+                        }
+                    ],
+                    max_tokens=4000,
+                    temperature=0.7
+                )
+                content = response.choices[0].message.content
+            else:
+                response = openai.ChatCompletion.create(
+                    model="gpt-4",
+                    messages=[
+                        {
+                            "role": "system", 
+                            "content": self._get_system_prompt()
+                        },
+                        {
+                            "role": "user", 
+                            "content": prompt
+                        }
+                    ],
+                    max_tokens=4000,
+                    temperature=0.7
+                )
+                content = response.choices[0].message.content
             
             # Parsing della risposta
-            content = response.choices[0].message.content
-            return self._parse_response(content)
+            return self._parse_response(content, data)
             
         except Exception as e:
-            print(f"Errore nella generazione: {str(e)}")
-            return None
+            print(f"Errore dettagliato nella generazione: {str(e)}")
+            print(f"Tipo errore: {type(e)}")
+            # Prova con GPT-3.5 se GPT-4 non funziona
+            try:
+                return self._generate_with_fallback_model(data)
+            except Exception as e2:
+                print(f"Errore anche con modello fallback: {str(e2)}")
+                return self._generate_fallback_content(data)
     
     def _get_system_prompt(self) -> str:
         """Prompt di sistema per definire il comportamento dell'AI"""
