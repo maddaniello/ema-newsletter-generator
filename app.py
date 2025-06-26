@@ -230,4 +230,4 @@ else:
 
 # Footer
 st.markdown("---")
-st.markdown("🚀 **Newsletter AI Generator** - Powered by OpenAI")
+st.markdown("🚀 **Newsletter AI Generator** - Sviluppato da Daniele Pisciottano e il suo amico Claude 🦕")
