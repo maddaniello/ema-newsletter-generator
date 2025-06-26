@@ -78,6 +78,67 @@ class NewsletterGenerator:
                 print(f"Errore anche con modello fallback: {str(e2)}")
                 return self._generate_fallback_content(data)
     
+    def _generate_fallback_content(self, data: Dict) -> Dict:
+        """Genera contenuto di fallback in caso di errore"""
+        company = data.get('company_name', 'la nostra azienda')
+        objective = data.get('email_objective', 'informare i clienti')
+        
+        # Contenuto personalizzato basato sui dati inseriti
+        newsletter_content = f"""# Newsletter {company}
+
+{objective}
+
+Siamo entusiasti di condividere con te le nostre ultime novità e aggiornamenti.
+
+**[SCOPRI DI PIÙ]**
+
+## Cosa abbiamo per te
+
+{data.get('content_brief', 'Contenuti esclusivi e offerte speciali pensati per te.')}"""
+
+        # Aggiungi prodotti se presenti
+        if data.get('products'):
+            newsletter_content += "\n\n## I nostri prodotti\n"
+            for product in data['products']:
+                if product and product.get('name'):
+                    newsletter_content += f"\n### {product['name']}\n"
+                    newsletter_content += f"Scopri tutti i dettagli di {product['name']}.\n"
+                    if product.get('link'):
+                        newsletter_content += f"**[SCOPRI {product['name'].upper()}]**\n"
+
+        # USP/Benefit
+        if data.get('usp_benefit'):
+            newsletter_content += f"\n\n## Perché scegliere {company}\n\n{data['usp_benefit']}\n"
+
+        # Codici sconto
+        if data.get('discount_codes'):
+            newsletter_content += f"\n\n## Offerta esclusiva\n\nUsa il codice: **{data['discount_codes'][0]}**\n"
+
+        newsletter_content += f"""
+
+---
+
+Grazie per la tua fiducia in {company}.
+
+**[VISITA IL SITO]**
+
+Il team di {company}
+"""
+        
+        return {
+            'email_subjects': [
+                f"News da {company}"[:40],
+                f"Novità {company}"[:40],
+                f"Offerte {company}"[:40]
+            ],
+            'email_previews': [
+                f"Scopri le ultime novità di {company}"[:100],
+                f"Non perdere le nostre offerte esclusive"[:100],
+                f"Rimani sempre aggiornato con noi"[:100]
+            ],
+            'newsletter_content': newsletter_content
+        }
+    
     def _get_system_prompt(self) -> str:
         """Prompt di sistema per definire il comportamento dell'AI"""
         return """
@@ -169,14 +230,17 @@ class NewsletterGenerator:
         
         return prompt
     
-    def _parse_response(self, content: str) -> Dict:
+    def _parse_response(self, content: str, data: Dict) -> Dict:
         """Parsing della risposta OpenAI"""
         try:
             # Tentativo di parsing JSON diretto
             if content.strip().startswith('{'):
-                return json.loads(content)
+                result = json.loads(content)
+                # Verifica che abbia tutti i campi necessari
+                if all(key in result for key in ['email_subjects', 'email_previews', 'newsletter_content']):
+                    return result
             
-            # Se non è JSON, prova a estrarre il contenuto
+            # Se non è JSON valido, prova a estrarre il contenuto manualmente
             lines = content.strip().split('\n')
             
             subjects = []
@@ -189,31 +253,34 @@ class NewsletterGenerator:
             for line in lines:
                 line = line.strip()
                 
-                if "oggett" in line.lower() or "subject" in line.lower():
+                if any(word in line.lower() for word in ["oggett", "subject"]):
                     current_section = "subjects"
-                elif "anteprima" in line.lower() or "preview" in line.lower():
+                elif any(word in line.lower() for word in ["anteprima", "preview"]):
                     current_section = "previews"
-                elif "contenuto" in line.lower() or "newsletter" in line.lower():
+                elif any(word in line.lower() for word in ["contenuto", "newsletter", "content"]):
                     current_section = "content"
                 elif line and current_section:
                     if current_section == "subjects" and len(subjects) < 3:
                         # Pulire la linea e prendere solo il testo
                         clean_line = line.replace("1.", "").replace("2.", "").replace("3.", "").replace("-", "").strip()
+                        clean_line = clean_line.replace('"', '').replace("'", "")
                         if clean_line and len(clean_line) <= 40:
                             subjects.append(clean_line)
                     elif current_section == "previews" and len(previews) < 3:
                         clean_line = line.replace("1.", "").replace("2.", "").replace("3.", "").replace("-", "").strip()
+                        clean_line = clean_line.replace('"', '').replace("'", "")
                         if clean_line and len(clean_line) <= 100:
                             previews.append(clean_line)
                     elif current_section == "content":
                         content_lines.append(line)
             
-            # Se non abbiamo abbastanza oggetti/anteprime, generali
+            # Se non abbiamo abbastanza oggetti/anteprime, generali di default
+            company = data.get('company_name', 'Azienda')
             while len(subjects) < 3:
-                subjects.append(f"Newsletter {data.get('company_name', 'Azienda')}")
+                subjects.append(f"Newsletter {company}"[:40])
             
             while len(previews) < 3:
-                previews.append(f"Scopri le novità di {data.get('company_name', 'la nostra azienda')}")
+                previews.append(f"Scopri le novità di {company}"[:100])
             
             newsletter_content = '\n'.join(content_lines) if content_lines else content
             
@@ -225,20 +292,8 @@ class NewsletterGenerator:
             
         except Exception as e:
             print(f"Errore nel parsing: {str(e)}")
-            # Fallback con contenuto base
-            return {
-                "email_subjects": [
-                    f"News da {data.get('company_name', 'Azienda')}",
-                    f"Novità {data.get('company_name', 'Azienda')}",
-                    f"Newsletter {data.get('company_name', 'Azienda')}"
-                ],
-                "email_previews": [
-                    f"Scopri le ultime novità di {data.get('company_name', 'la nostra azienda')}",
-                    f"Non perdere le offerte esclusive di {data.get('company_name', 'la nostra azienda')}",
-                    f"Rimani aggiornato con {data.get('company_name', 'la nostra newsletter')}"
-                ],
-                "newsletter_content": content
-            }
+            # Fallback completo
+            return self._generate_fallback_content(data)
 
     def generate_subjects_only(self, data: Dict) -> List[str]:
         """Genera solo gli oggetti email"""
@@ -255,14 +310,23 @@ class NewsletterGenerator:
             Rispondi solo con i 3 oggetti, uno per riga, senza numerazione.
             """
             
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=200,
-                temperature=0.8
-            )
+            if NEW_OPENAI:
+                response = self.client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=200,
+                    temperature=0.8
+                )
+                content = response.choices[0].message.content.strip()
+            else:
+                response = openai.ChatCompletion.create(
+                    model="gpt-3.5-turbo",
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=200,
+                    temperature=0.8
+                )
+                content = response.choices[0].message.content.strip()
             
-            content = response.choices[0].message.content.strip()
             subjects = [line.strip() for line in content.split('\n') if line.strip()]
             
             # Filtra per lunghezza
